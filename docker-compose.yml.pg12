@@ -1,0 +1,79 @@
+version: '3.7'
+services:
+  xnat-web:
+    build:
+      context: ./xnat
+      args:
+        XNAT_VERSION: ${XNAT_VERSION}
+        XNAT_SMTP_ENABLED: ${XNAT_SMTP_ENABLED}
+        XNAT_SMTP_HOSTNAME: ${XNAT_SMTP_HOSTNAME}
+        XNAT_SMTP_PORT: ${XNAT_SMTP_PORT}
+        XNAT_SMTP_AUTH: ${XNAT_SMTP_AUTH}
+        XNAT_SMTP_USERNAME: ${XNAT_SMTP_USERNAME}
+        XNAT_SMTP_PASSWORD: ${XNAT_SMTP_PASSWORD}
+        XNAT_DATASOURCE_DRIVER: ${XNAT_DATASOURCE_DRIVER}
+        XNAT_DATASOURCE_URL: ${XNAT_DATASOURCE_URL}
+        XNAT_DATASOURCE_USERNAME: ${XNAT_DATASOURCE_USERNAME}
+        XNAT_DATASOURCE_PASSWORD: ${XNAT_DATASOURCE_PASSWORD}
+        TOMCAT_XNAT_FOLDER: ${TOMCAT_XNAT_FOLDER}
+        XNAT_ROOT: ${XNAT_ROOT}
+        XNAT_HOME: ${XNAT_HOME}
+        XNAT_EMAIL: ${XNAT_EMAIL}
+    ports:
+      - 8104:8104
+    volumes:
+      - ~/.ssh:/root/.ssh
+      - ./xnat/plugins:${XNAT_HOME}/plugins
+      - ./xnat/aspera_keys:${XNAT_HOME}/aspera_keys
+      - ./xnat/relay_tools:${XNAT_HOME}/relay_tools
+      - ./xnat/relay_tools/ascp:/usr/local/bin/ascp
+      - ./xnat/relay_tools/aspera-license:/usr/local/bin/aspera-license
+      - /data/xnat/home/logs:${XNAT_HOME}/logs
+      - /data/xnat/archive:${XNAT_ROOT}/archive
+      - /data/xnat/prearchive:${XNAT_ROOT}/prearchive
+      - /data/xnat/pipeline:${XNAT_ROOT}/pipeline
+      - /data/xnat/inbox:${XNAT_ROOT}/inbox
+      - /data/xnat/build:${XNAT_ROOT}/build
+      - /data/xnat/cache:${XNAT_ROOT}/cache
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - xnat-db
+    environment:
+      - CATALINA_OPTS=-Xms${XNAT_MIN_HEAP} -Xmx${XNAT_MAX_HEAP} -Dxnat.home=${XNAT_HOME}
+      - XNAT_HOME=${XNAT_HOME}
+
+  xnat-db:
+    image: postgres:${PG_VERSION}
+    restart: on-failure
+    ports:
+      - "5432:5432"
+    volumes:
+      - /data/postgres/data-pg12:/var/lib/postgresql/data
+      #- ./postgres-data:/var/lib/postgresql/data
+      # 
+      - ./postgres:/docker-entrypoint-initdb.d
+    environment:
+      - POSTGRES_PASSWORD=${XNAT_DATASOURCE_ADMIN_PASSWORD}
+      - POSTGRES_DB=${XNAT_DATASOURCE_NAME}
+      # variables for the sql script
+      - XNAT_DATASOURCE_USERNAME=${XNAT_DATASOURCE_USERNAME}
+      - XNAT_DATASOURCE_PASSWORD=${XNAT_DATASOURCE_PASSWORD}
+
+  xnat-nginx:
+    image: nginx:${NGINX_VERSION}
+    restart: on-failure
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ccfrelay-selfsigned.crt:/etc/nginx/certs/ccfrelay-selfsigned.crt
+      - ./nginx/ccfrelay-selfsigned.key:/etc/nginx/certs/ccfrelay-selfsigned.key
+    ports:
+      - "443:443"
+      - "80:80"
+    expose:
+      - "443"
+      - "80"
+    depends_on:
+      - xnat-web
+    links:
+      - xnat-web
+
